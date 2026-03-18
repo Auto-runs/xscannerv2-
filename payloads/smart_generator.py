@@ -224,17 +224,24 @@ class AdaptiveSequencer:
         Provide feedback on a payload result.
         result=None means blocked/no reflection.
         result=dict means detected.
+
+        Penalty is AGGRESSIVE: first block = -0.6 (immediate deprioritize).
+        This matches real-world behavior where WAF blocks entire families.
         """
         if result is None:
-            # Penalize this family
-            self._family_scores[label] = self._family_scores.get(label, 0) - 0.1
-            # Remember what got blocked
+            # Aggressive penalty — first block drops below most other families
+            current = self._family_scores.get(label, 0)
+            # First block: -0.6, subsequent blocks: -0.2 each (diminishing)
+            penalty = -0.6 if current >= 0 else -0.2
+            self._family_scores[label] = current + penalty
+            # Remember blocked payload prefix for pattern matching
             if len(payload) > 5:
-                self._blocked_patterns.add(payload[:10])
+                self._blocked_patterns.add(payload[:12])
         else:
-            # Boost this family
+            # Boost this family proportional to confidence
             conf = result.get("confidence", 0.5)
-            self._family_scores[label] = self._family_scores.get(label, 0) + conf
+            # Successful families get strong boost to rise above others
+            self._family_scores[label] = self._family_scores.get(label, 0) + (conf * 1.5)
 
     def rerank(
         self,

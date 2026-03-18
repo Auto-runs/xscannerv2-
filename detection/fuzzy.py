@@ -201,8 +201,7 @@ class FuzzyDetector:
     def _best_similarity(self, payload: str, response: str) -> float:
         """
         Find the best Levenshtein similarity between payload and
-        any substring of response of similar length.
-        Uses sliding window with step optimization.
+        any substring of response. Uses full payload — no truncation.
         """
         if not _HAS_RAPIDFUZZ:
             return self._fallback_similarity(payload, response)
@@ -211,9 +210,16 @@ class FuzzyDetector:
         if plen == 0:
             return 0.0
 
-        best = 0.0
-        # Use rapidfuzz partial_ratio for efficient substring matching
-        best = rfuzz.partial_ratio(payload[:100], response)
+        # Use full payload for partial_ratio — critical for long polyglots/mXSS
+        best = rfuzz.partial_ratio(payload, response)
+
+        # Also check most distinctive segment (middle 60%) for very long payloads
+        if plen > 150:
+            start = plen // 5
+            end   = plen - plen // 5
+            mid_score = rfuzz.partial_ratio(payload[start:end], response)
+            best = max(best, mid_score)
+
         return float(best)
 
     def _fallback_similarity(self, s1: str, s2: str) -> float:

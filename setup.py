@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="xscanner",
-    version="2.0.0",
+    version="5.0.0",
     description="Next-Generation XSS Detection Framework",
     python_requires=">=3.11",
     packages=find_packages(),

@@ -142,25 +142,47 @@ class ConfidenceScorer:
 
     def score(
         self,
-        reflected: bool,
+        reflected:     bool,
         chars_survive: bool,
-        executable: bool,
-        waf_bypass: bool,
+        executable:    bool,
+        waf_bypass:    bool,
+        context:       str = "unknown",
+        exec_reason:   str = "",
     ) -> Tuple[str, str]:
         """
-        Returns (confidence: str, severity: str).
+        Context-aware confidence scoring.
+        Reflection inside <script> block = much higher risk than in HTML comment.
         """
         points = 0
         if reflected:      points += 30
-        if chars_survive:  points += 25
+        if chars_survive:  points += 20
         if executable:     points += 35
         if waf_bypass:     points += 10
 
+        # Context multiplier — same reflection is more dangerous in certain contexts
+        context_bonus = {
+            "javascript":    15,  # inside script block = very high
+            "js_string":     12,
+            "js_template":   12,
+            "attribute":     10,  # inside attribute = high
+            "html":           5,  # HTML body = standard
+            "url":            8,
+            "css":            3,
+            "comment":        0,  # inside comment = low risk
+            "unknown":        5,
+        }.get(context, 5)
+        points += context_bonus
+
+        # Execution reason bonus
+        if "script" in exec_reason.lower():    points += 5
+        if "event handler" in exec_reason.lower(): points += 8
+        if "event_handler" in exec_reason.lower(): points += 8
+
         if points >= 80:
             return "High", "High"
-        elif points >= 50:
+        elif points >= 55:
             return "Medium", "Medium"
-        elif points >= 30:
+        elif points >= 35:
             return "Low", "Low"
         else:
             return "Informational", "Info"
@@ -207,7 +229,8 @@ class DetectionEngine:
 
         # Layer 5: Confidence
         confidence, severity = self.scorer.score(
-            reflected, chars_ok, executable or dom_vuln, waf_bypassed
+            reflected, chars_ok, executable or dom_vuln, waf_bypassed,
+            context=context, exec_reason=exec_reason,
         )
 
         # Only report Medium+ confidence
